@@ -62,6 +62,9 @@ METADATA_SCRIPT = os.path.abspath(os.path.join(
 WATCH_FLAGS = iFlags.CREATE | iFlags.DELETE | iFlags.MODIFY \
     | iFlags.MOVED_TO | iFlags.MOVED_FROM | iFlags.ONLYDIR \
     | iFlags.CLOSE_WRITE
+WRITABLE_SYMLINK_TARGET_ROOTS = (
+    "/mnt/UDISK/root/k2-improvements/features/macros",
+)
 
 class FileManager:
     def __init__(self, config: ConfigHelper) -> None:
@@ -105,6 +108,10 @@ class FileManager:
         self.fixed_path_args: Dict[str, Any] = {}
         self.queue_gcodes: bool = config.getboolean('queue_gcode_uploads', False)
         self.check_klipper_path = config.getboolean("check_klipper_config_path", True)
+        self.writable_symlink_target_roots = tuple(
+            pathlib.Path(path).expanduser().resolve()
+            for path in WRITABLE_SYMLINK_TARGET_ROOTS
+        )
 
         # Register file management endpoints
         self.server.register_endpoint(
@@ -409,6 +416,17 @@ class FileManager:
             if reg_root_path in path.parents:
                 return not self.check_reserved_path(path, False, False)
         return False
+
+    def _is_writable_symlink_target(self, path: StrOrPath) -> bool:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        if not path.is_symlink():
+            return False
+        target = path.expanduser().resolve()
+        return any(
+            target == root or root in target.parents
+            for root in self.writable_symlink_target_roots
+        )
 
     def upload_queue_enabled(self) -> bool:
         return self.queue_gcodes
@@ -796,7 +814,11 @@ class FileManager:
             permissions = "rw"
             if (
                 root not in self.full_access_roots or
-                (path.is_symlink() and path.is_file())
+                (
+                    path.is_symlink() and
+                    path.is_file() and
+                    not self._is_writable_symlink_target(path)
+                )
             ):
                 permissions = "r"
             for name, (res_path, can_read) in self.reserved_paths.items():

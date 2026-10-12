@@ -726,7 +726,13 @@ class GitRepo:
             self.repo_warnings.append(
                 f"Failed to detect tracking remote for branch {self.git_branch}"
             )
-        elif self.git_branch != self.primary_branch or self.git_remote != "origin":
+        elif (
+            (self.git_branch != self.primary_branch or self.git_remote != "origin")
+            and not (
+                self.git_branch == "k2"
+                and "orbit0r/moonraker" in self.upstream_url.lower()
+            )
+        ):
             self.repo_anomalies.append(
                 "Repo not on official remote/branch, expected: "
                 f"origin/{self.primary_branch}, detected: "
@@ -737,14 +743,22 @@ class GitRepo:
             upstream_url = self.upstream_url.lower()
             if upstream_url[-4:] != ".git":
                 upstream_url += ".git"
-            if upstream_url != self.origin_url.lower():
+            if (
+                upstream_url != self.origin_url.lower()
+                and "orbit0r/moonraker" not in upstream_url
+            ):
                 self.repo_anomalies.append(
                     f"Unofficial remote url: {self.upstream_url}"
                 )
         if self.untracked_files:
-            self.repo_anomalies.append(
-                f"Repo has untracked source files: {self.untracked_files}"
-            )
+            greenlisted_files = {"moonraker/components/timelapse.py"}
+            non_greenlisted = [
+                f for f in self.untracked_files if f not in greenlisted_files
+            ]
+            if non_greenlisted:
+                self.repo_anomalies.append(
+                    f"Repo has untracked source files: {non_greenlisted}"
+                )
         if self.diverged:
             self.repo_anomalies.append("Repo has diverged from remote")
         if self.head_detached:

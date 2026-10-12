@@ -12,6 +12,7 @@ import logging
 import getpass
 import asyncio
 import pathlib
+import shutil
 from ..utils import ServerError, get_unix_peer_credentials
 from ..utils import json_wrapper as jsonw
 from ..common import KlippyState, RequestType
@@ -735,11 +736,7 @@ class KlippyConnection:
         return self.subscription_cache
 
     async def rollover_log(self) -> None:
-        if "unit_name" not in self._service_info:
-            raise self.server.error(
-                "Unable to detect Klipper Service, cannot perform "
-                "manual rollover"
-            )
+        # K2: Creality Klipper is not a systemd unit — roll logs in place.
         logfile: Optional[str] = self._klippy_info.get("log_file", None)
         if logfile is None:
             raise self.server.error(
@@ -752,18 +749,17 @@ class KlippyConnection:
             raise self.server.error(
                 f"No file at {logpath} exists, cannot perform rollover"
             )
-        machine: Machine = self.server.lookup_component("machine")
-        await machine.do_service_action("stop", self.unit_name)
         suffix = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
         new_path = pathlib.Path(f"{logpath}.{suffix}")
 
         def _do_file_op() -> None:
             if new_path.exists():
                 new_path.unlink()
-            logpath.rename(new_path)
+            shutil.copy2(logpath, new_path)
+            with logpath.open("w") as f:
+                f.truncate(0)
 
         await self.event_loop.run_in_thread(_do_file_op)
-        await machine.do_service_action("start", self.unit_name)
 
     async def _on_connection_closed(self) -> None:
         self._klippy_identified = False
